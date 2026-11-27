@@ -4,10 +4,12 @@ import {
   ArrowRight,
   Building2,
   Clock,
+  FileText,
   Loader2,
   MapPin,
   Sparkles,
   Ticket as TicketIcon,
+  User,
   Users,
 } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
@@ -22,7 +24,6 @@ import {
 } from '../lib/session';
 import { playCalledAlert, unlockAudioOnGesture } from '../lib/sound';
 import {
-  PRIORITY_TAG,
   calculateStudentWaitEstimate,
   computeRollingAverageMinutes,
   formatMinutesLabel,
@@ -41,7 +42,6 @@ export function StudentPage() {
   const [selectedSpId, setSelectedSpId] = useState<string | null>(null);
   const [studentName, setStudentName] = useState<string>('');
   const [purpose, setPurpose] = useState<string>('');
-  const [requestPriorityLane, setRequestPriorityLane] = useState<boolean>(false);
 
   const [joining, setJoining] = useState<boolean>(false);
   const [leaving, setLeaving] = useState<boolean>(false);
@@ -236,19 +236,12 @@ export function StudentPage() {
       // Non-fatal: audio unlocking may be restricted in some browsers
     }
 
-    const trimmedPurpose = purpose.trim();
-    const encodedPurpose = requestPriorityLane
-      ? trimmedPurpose
-        ? `${PRIORITY_TAG} ${trimmedPurpose}`
-        : PRIORITY_TAG
-      : trimmedPurpose;
-
     try {
       const result = await joinQueue({
         servicePointId: targetSp.id,
         sessionToken,
         studentName,
-        purpose: encodedPurpose,
+        purpose: purpose.trim(),
       });
 
       setOptimisticTicket(result.ticket);
@@ -266,7 +259,6 @@ export function StudentPage() {
 
       setStudentName('');
       setPurpose('');
-      setRequestPriorityLane(false);
       setSelectedSpId(null);
 
       try {
@@ -506,68 +498,59 @@ export function StudentPage() {
                       {isSelected && sp.is_active && (
                         <form
                           onSubmit={(e) => void handleJoinQueue(e, sp)}
-                          className="space-y-3 rounded-b-2xl border-t border-slate-100 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/60 sm:p-5"
+                          className="space-y-4 rounded-b-2xl border-t border-slate-200/80 bg-slate-50/50 p-5 dark:border-slate-800 dark:bg-slate-900/30 sm:p-6"
                         >
-                          <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="grid gap-3.5 sm:grid-cols-2">
                             <div>
                               <label
                                 htmlFor="student-name"
-                                className="block text-xs font-semibold text-slate-700 dark:text-slate-200"
+                                className="mb-1.5 block text-xs font-semibold text-slate-700 dark:text-slate-200"
                               >
                                 Name or Student ID{' '}
                                 <span className="font-normal text-slate-400">(optional)</span>
                               </label>
-                              <input
-                                id="student-name"
-                                type="text"
-                                maxLength={60}
-                                disabled={joining}
-                                value={studentName}
-                                onChange={(e) => setStudentName(e.target.value)}
-                                placeholder="e.g., Juan D. / 2024-0123"
-                                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-maroon-800 focus:outline-none focus:ring-2 focus:ring-maroon-800/20 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-rose-400 dark:focus:ring-rose-400/25"
-                              />
+                              <div className="relative">
+                                <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+                                <input
+                                  id="student-name"
+                                  type="text"
+                                  maxLength={60}
+                                  disabled={joining}
+                                  value={studentName}
+                                  onChange={(e) => setStudentName(e.target.value)}
+                                  placeholder="e.g., Juan D. / 2024-0123"
+                                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3.5 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-maroon-800 focus:outline-none focus:ring-4 focus:ring-maroon-800/10 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-rose-400 dark:focus:ring-rose-400/20"
+                                />
+                              </div>
                             </div>
                             <div>
                               <label
                                 htmlFor="student-purpose"
-                                className="block text-xs font-semibold text-slate-700 dark:text-slate-200"
+                                className="mb-1.5 block text-xs font-semibold text-slate-700 dark:text-slate-200"
                               >
                                 Transaction{' '}
                                 <span className="font-normal text-slate-400">(optional)</span>
                               </label>
-                              <input
-                                id="student-purpose"
-                                type="text"
-                                maxLength={105}
-                                disabled={joining}
-                                value={purpose}
-                                onChange={(e) => setPurpose(e.target.value)}
-                                placeholder="e.g., Request TOR, Clearance"
-                                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-maroon-800 focus:outline-none focus:ring-2 focus:ring-maroon-800/20 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-rose-400 dark:focus:ring-rose-400/25"
-                              />
+                              <div className="relative">
+                                <FileText className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+                                <input
+                                  id="student-purpose"
+                                  type="text"
+                                  maxLength={105}
+                                  disabled={joining}
+                                  value={purpose}
+                                  onChange={(e) => setPurpose(e.target.value)}
+                                  placeholder="e.g., Request TOR, Clearance"
+                                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3.5 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-maroon-800 focus:outline-none focus:ring-4 focus:ring-maroon-800/10 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-rose-400 dark:focus:ring-rose-400/20"
+                                />
+                              </div>
                             </div>
                           </div>
-
-                          {/* Lane Selection (Regular / Priority) — preserves joinQueue RPC contract */}
-                          <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs dark:border-slate-800 dark:bg-slate-900">
-                            <span className="flex items-center gap-2 font-semibold text-slate-700 dark:text-slate-200">
-                              <Sparkles className="h-4 w-4 text-gold-600 dark:text-gold-400" />
-                              Priority Lane (PWD / Senior / Pregnant)
-                            </span>
-                            <input
-                              type="checkbox"
-                              disabled={joining}
-                              checked={requestPriorityLane}
-                              onChange={(e) => setRequestPriorityLane(e.target.checked)}
-                              className="h-4 w-4 rounded border-slate-300 text-maroon-800 focus:ring-maroon-800 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-rose-500 dark:focus:ring-rose-400"
-                            />
-                          </label>
 
                           <button
                             type="submit"
                             disabled={joining || !sp.is_active}
-                            className="flex w-full items-center justify-center gap-2 rounded-xl bg-maroon-800 px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-maroon-900 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-rose-500 dark:text-slate-950 dark:hover:bg-rose-400"
+                            className="group flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-maroon-800 to-maroon-900 px-5 py-3.5 text-sm font-bold text-white shadow-md transition-all hover:shadow-lg hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:shadow-md disabled:hover:brightness-100 dark:from-rose-500 dark:to-rose-600 dark:text-slate-950 dark:hover:brightness-105"
                           >
                             {joining ? (
                               <>
@@ -577,7 +560,7 @@ export function StudentPage() {
                             ) : (
                               <>
                                 Join {sp.name} Queue
-                                <ArrowRight className="h-4 w-4" />
+                                <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
                               </>
                             )}
                           </button>
