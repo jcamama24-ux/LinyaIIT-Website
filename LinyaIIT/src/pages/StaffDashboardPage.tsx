@@ -179,24 +179,24 @@ export function StaffDashboardPage() {
 
   if (authLoading || !isAuthorizedStaff) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <Loader2 className="h-8 w-8 animate-spin text-maroon-800" />
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <Loader2 className="h-8 w-8 animate-spin text-maroon-800 dark:text-maroon-400" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-12">
+    <div className="min-h-screen bg-slate-50 pb-12 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100">
       <Navbar realtimeStatus={realtimeStatus} onRefresh={refresh} />
 
       <main className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
         {/* Top Control Bar */}
-        <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div>
               <label
                 htmlFor="service-point-select"
-                className="block text-[11px] font-bold uppercase tracking-wider text-slate-500"
+                className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400"
               >
                 Active Service Counter
               </label>
@@ -207,7 +207,7 @@ export function StaffDashboardPage() {
                   setSelectedSpId(e.target.value);
                   setActionError(null);
                 }}
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-900 focus:border-maroon-700 focus:outline-none focus:ring-2 focus:ring-maroon-700/20 sm:w-80"
+                className="mt-1 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-900 focus:border-maroon-700 focus:outline-none focus:ring-2 focus:ring-maroon-700/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:border-maroon-500 dark:focus:ring-maroon-500/20 sm:w-80"
               >
                 {servicePoints.map((sp) => (
                   <option key={sp.id} value={sp.id}>
@@ -229,8 +229,8 @@ export function StaffDashboardPage() {
                   }
                   className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition ${
                     currentSp.is_active
-                      ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100'
-                      : 'bg-amber-50 text-amber-800 ring-1 ring-amber-200 hover:bg-amber-100'
+                      ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:text-emerald-400 dark:ring-emerald-800/60 dark:hover:bg-emerald-900/50'
+                      : 'bg-amber-50 text-amber-800 ring-1 ring-amber-200 hover:bg-amber-100 dark:bg-amber-950/50 dark:text-amber-400 dark:ring-amber-800/60 dark:hover:bg-amber-900/50'
                   }`}
                 >
                   {currentSp.is_active ? (
@@ -249,19 +249,19 @@ export function StaffDashboardPage() {
                 <Link
                   to={`/display?sp=${currentSp.id}`}
                   target="_blank"
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
-                  <Tv className="h-4 w-4 text-maroon-700" />
+                  <Tv className="h-4 w-4 text-maroon-700 dark:text-maroon-400" />
                   Kiosk TV
                 </Link>
               </div>
             )}
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3 lg:border-t-0 lg:pt-0">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3 dark:border-slate-800 lg:border-t-0 lg:pt-0">
             <div className="text-xs">
-              <p className="font-bold text-slate-900">{staffProfile?.full_name}</p>
-              <p className="text-slate-500">{user?.email}</p>
+              <p className="font-bold text-slate-900 dark:text-white">{staffProfile?.full_name}</p>
+              <p className="text-slate-500 dark:text-slate-400">{user?.email}</p>
             </div>
 
             <div className="flex items-center gap-2">
@@ -271,7 +271,7 @@ export function StaffDashboardPage() {
                   onClick={() => setConfirmResetOpen(true)}
                   disabled={busyAction !== null}
                   title="Clear today's tickets for this counter and reset numbering to 001"
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-rose-800 dark:hover:bg-rose-950/50 dark:hover:text-rose-400"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                   Reset Queue
@@ -281,7 +281,7 @@ export function StaffDashboardPage() {
               <button
                 type="button"
                 onClick={() => void signOut()}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-slate-800"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
               >
                 <LogOut className="h-3.5 w-3.5" />
                 Sign Out
@@ -291,50 +291,50 @@ export function StaffDashboardPage() {
         </div>
 
         {(error || actionError) && (
-          <div className="mt-4 flex items-start gap-2.5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
-            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
+          <div className="mt-4 flex items-start gap-2.5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400" />
             <p className="font-medium">{actionError ?? error}</p>
           </div>
         )}
 
         {/* Stats Summary Row */}
         <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-slate-400">
               <span>Waiting Now</span>
-              <Users className="h-4 w-4 text-maroon-700" />
+              <Users className="h-4 w-4 text-maroon-700 dark:text-maroon-400" />
             </div>
-            <p className="mt-2 font-mono text-3xl font-extrabold text-slate-900">
+            <p className="mt-2 font-mono text-3xl font-extrabold text-slate-900 dark:text-white">
               {stats.waiting}
             </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-slate-400">
               <span>Completed Today</span>
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             </div>
-            <p className="mt-2 font-mono text-3xl font-extrabold text-emerald-700">
+            <p className="mt-2 font-mono text-3xl font-extrabold text-emerald-700 dark:text-emerald-400">
               {stats.completed}
             </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-slate-400">
               <span>Skipped</span>
-              <SkipForward className="h-4 w-4 text-amber-600" />
+              <SkipForward className="h-4 w-4 text-amber-600 dark:text-amber-400" />
             </div>
-            <p className="mt-2 font-mono text-3xl font-extrabold text-amber-700">
+            <p className="mt-2 font-mono text-3xl font-extrabold text-amber-700 dark:text-amber-400">
               {stats.skipped}
             </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-slate-400">
               <span>Avg Wait Time</span>
-              <Clock className="h-4 w-4 text-slate-400" />
+              <Clock className="h-4 w-4 text-slate-400 dark:text-slate-500" />
             </div>
-            <p className="mt-2 font-mono text-3xl font-extrabold text-slate-900">
+            <p className="mt-2 font-mono text-3xl font-extrabold text-slate-900 dark:text-white">
               {stats.avgWaitMins !== null ? `${stats.avgWaitMins}m` : '—'}
             </p>
           </div>
@@ -342,20 +342,20 @@ export function StaffDashboardPage() {
 
         {/* Main Workspace Grid */}
         {queueLoading ? (
-          <div className="mt-6 flex justify-center rounded-3xl border border-slate-200 bg-white py-20">
-            <Loader2 className="h-8 w-8 animate-spin text-maroon-800" />
+          <div className="mt-6 flex justify-center rounded-3xl border border-slate-200 bg-white py-20 dark:border-slate-800 dark:bg-slate-900">
+            <Loader2 className="h-8 w-8 animate-spin text-maroon-800 dark:text-maroon-400" />
           </div>
         ) : (
           <div className="mt-5 grid gap-5 lg:grid-cols-12">
             {/* LEFT: NOW SERVING CONTROL CONSOLE */}
             <section className="lg:col-span-5">
-              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-md">
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-md dark:border-slate-800 dark:bg-slate-900">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-widest text-slate-400">
+                  <span className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
                     Currently Serving
                   </span>
                   {currentCalled && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:ring-emerald-800/60">
                       <Megaphone className="h-3 w-3" />
                       Called at {formatTime(currentCalled.called_at)}
                     </span>
@@ -389,7 +389,7 @@ export function StaffDashboardPage() {
                             staffCompleteTicket(currentCalled.id)
                           )
                         }
-                        className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
+                        className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60 dark:hover:bg-emerald-500"
                       >
                         {busyAction === 'complete' ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -405,7 +405,7 @@ export function StaffDashboardPage() {
                         onClick={() =>
                           void runAction('skip', () => staffSkipTicket(currentCalled.id))
                         }
-                        className="flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3.5 text-sm font-bold text-amber-900 transition hover:bg-amber-100 disabled:opacity-60"
+                        className="flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3.5 text-sm font-bold text-amber-900 transition hover:bg-amber-100 disabled:opacity-60 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-900/50"
                       >
                         {busyAction === 'skip' ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -418,12 +418,12 @@ export function StaffDashboardPage() {
                   </div>
                 ) : (
                   <div className="mt-4">
-                    <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center">
-                      <UserCheck className="mx-auto h-10 w-10 text-slate-300" />
-                      <p className="mt-2 text-base font-bold text-slate-700">
+                    <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center dark:border-slate-800 dark:bg-slate-950/60">
+                      <UserCheck className="mx-auto h-10 w-10 text-slate-300 dark:text-slate-700" />
+                      <p className="mt-2 text-base font-bold text-slate-700 dark:text-slate-200">
                         Counter Ready
                       </p>
-                      <p className="mt-1 text-xs text-slate-500">
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                         {waitingTickets.length > 0
                           ? `Next in line: ${waitingTickets[0].ticket_number}`
                           : 'Waiting for students to join this queue.'}
@@ -438,7 +438,7 @@ export function StaffDashboardPage() {
                       onClick={() =>
                         void runAction('call', () => staffCallNext(selectedSpId))
                       }
-                      className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-maroon-800 px-5 py-4 text-base font-extrabold text-white shadow-md transition hover:bg-maroon-900 disabled:cursor-not-allowed disabled:opacity-45"
+                      className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-maroon-800 px-5 py-4 text-base font-extrabold text-white shadow-md transition hover:bg-maroon-900 disabled:cursor-not-allowed disabled:opacity-45 dark:bg-maroon-700 dark:hover:bg-maroon-600"
                     >
                       {busyAction === 'call' ? (
                         <>
@@ -457,26 +457,36 @@ export function StaffDashboardPage() {
                   </div>
                 )}
 
-                <div className="mt-5 border-t border-slate-100 pt-3 text-center text-[11px] text-slate-400">
-                  Shortcuts: <kbd className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-slate-600">N</kbd> Call Next ·{' '}
-                  <kbd className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-slate-600">C</kbd> Complete ·{' '}
-                  <kbd className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-slate-600">S</kbd> Skip
+                <div className="mt-5 border-t border-slate-100 pt-3 text-center text-[11px] text-slate-400 dark:border-slate-800 dark:text-slate-500">
+                  Shortcuts:{' '}
+                  <kbd className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                    N
+                  </kbd>{' '}
+                  Call Next ·{' '}
+                  <kbd className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                    C
+                  </kbd>{' '}
+                  Complete ·{' '}
+                  <kbd className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                    S
+                  </kbd>{' '}
+                  Skip
                 </div>
               </div>
             </section>
 
             {/* RIGHT: LIVE WAITING LIST & HISTORY */}
             <section className="lg:col-span-7">
-              <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-                <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3.5">
-                  <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+              <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3.5 dark:border-slate-800">
+                  <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
                     <button
                       type="button"
                       onClick={() => setActiveTab('waiting')}
                       className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
                         activeTab === 'waiting'
-                          ? 'bg-white text-maroon-800 shadow-sm'
-                          : 'text-slate-600 hover:text-slate-900'
+                          ? 'bg-white text-maroon-800 shadow-sm dark:bg-slate-900 dark:text-white'
+                          : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
                       }`}
                     >
                       Waiting ({waitingTickets.length})
@@ -486,14 +496,14 @@ export function StaffDashboardPage() {
                       onClick={() => setActiveTab('history')}
                       className={`rounded-lg px-3.5 py-1.5 text-xs font-bold transition ${
                         activeTab === 'history'
-                          ? 'bg-white text-maroon-800 shadow-sm'
-                          : 'text-slate-600 hover:text-slate-900'
+                          ? 'bg-white text-maroon-800 shadow-sm dark:bg-slate-900 dark:text-white'
+                          : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
                       }`}
                     >
                       History ({historyTickets.length})
                     </button>
                   </div>
-                  <span className="text-xs font-medium text-slate-500">
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                     Total today: {stats.totalToday}
                   </span>
                 </div>
@@ -501,25 +511,27 @@ export function StaffDashboardPage() {
                 {activeTab === 'waiting' ? (
                   waitingTickets.length === 0 ? (
                     <div className="px-6 py-16 text-center">
-                      <Users className="mx-auto h-10 w-10 text-slate-300" />
-                      <p className="mt-2 font-bold text-slate-700">Queue is empty</p>
-                      <p className="mt-1 text-xs text-slate-500">
+                      <Users className="mx-auto h-10 w-10 text-slate-300 dark:text-slate-700" />
+                      <p className="mt-2 font-bold text-slate-700 dark:text-slate-200">
+                        Queue is empty
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                         New student tickets will appear here instantly without refreshing.
                       </p>
                     </div>
                   ) : (
-                    <ul className="divide-y divide-slate-100">
+                    <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                       {waitingTickets.map((ticket, index) => (
                         <li
                           key={ticket.id}
-                          className="flex items-center justify-between gap-4 px-5 py-3.5 transition hover:bg-slate-50"
+                          className="flex items-center justify-between gap-4 px-5 py-3.5 transition hover:bg-slate-50 dark:hover:bg-slate-800/60"
                         >
-                          <div className="flex items-center gap-3.5 min-w-0">
+                          <div className="flex min-w-0 items-center gap-3.5">
                             <span
                               className={`flex h-11 w-16 shrink-0 items-center justify-center rounded-xl font-mono text-base font-extrabold ${
                                 index === 0
-                                  ? 'bg-maroon-800 text-white'
-                                  : 'bg-slate-100 text-slate-800'
+                                  ? 'bg-maroon-800 text-white dark:bg-maroon-700'
+                                  : 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200'
                               }`}
                             >
                               {ticket.ticket_number}
@@ -527,16 +539,16 @@ export function StaffDashboardPage() {
 
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="truncate text-sm font-bold text-slate-900">
+                                <span className="truncate text-sm font-bold text-slate-900 dark:text-white">
                                   {ticket.student_name || 'Campus Student'}
                                 </span>
                                 {index === 0 && (
-                                  <span className="rounded-full bg-gold-100 px-2 py-0.5 text-[10px] font-bold uppercase text-gold-800">
+                                  <span className="rounded-full bg-gold-100 px-2 py-0.5 text-[10px] font-bold uppercase text-gold-800 dark:bg-amber-900/40 dark:text-amber-300">
                                     Up Next
                                   </span>
                                 )}
                               </div>
-                              <p className="truncate text-xs text-slate-500">
+                              <p className="truncate text-xs text-slate-500 dark:text-slate-400">
                                 {ticket.purpose ? `${ticket.purpose} · ` : ''}
                                 Joined {formatTime(ticket.created_at)} ({formatWaitMinutes(ticket.created_at)})
                               </p>
@@ -552,7 +564,7 @@ export function StaffDashboardPage() {
                               )
                             }
                             title="Skip this waiting ticket"
-                            className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800 disabled:opacity-50"
+                            className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:border-amber-700 dark:hover:bg-amber-950/50 dark:hover:text-amber-300"
                           >
                             Skip
                           </button>
@@ -562,28 +574,30 @@ export function StaffDashboardPage() {
                   )
                 ) : historyTickets.length === 0 ? (
                   <div className="px-6 py-16 text-center">
-                    <Clock className="mx-auto h-10 w-10 text-slate-300" />
-                    <p className="mt-2 font-bold text-slate-700">No history yet today</p>
-                    <p className="mt-1 text-xs text-slate-500">
+                    <Clock className="mx-auto h-10 w-10 text-slate-300 dark:text-slate-700" />
+                    <p className="mt-2 font-bold text-slate-700 dark:text-slate-200">
+                      No history yet today
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                       Completed, skipped, and cancelled tickets appear here.
                     </p>
                   </div>
                 ) : (
-                  <ul className="divide-y divide-slate-100">
+                  <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                     {historyTickets.map((ticket) => (
                       <li
                         key={ticket.id}
-                        className="flex items-center justify-between gap-4 px-5 py-3"
+                        className="flex items-center justify-between gap-4 px-5 py-3 transition hover:bg-slate-50 dark:hover:bg-slate-800/40"
                       >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className="font-mono text-sm font-bold text-slate-700 w-14">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className="w-14 font-mono text-sm font-bold text-slate-700 dark:text-slate-300">
                             {ticket.ticket_number}
                           </span>
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-slate-800">
+                            <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-200">
                               {ticket.student_name || 'Campus Student'}
                             </p>
-                            <p className="text-xs text-slate-400">
+                            <p className="text-xs text-slate-400 dark:text-slate-500">
                               Finished {formatTime(ticket.completed_at)}
                             </p>
                           </div>
@@ -593,10 +607,10 @@ export function StaffDashboardPage() {
                           <span
                             className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold capitalize ${
                               ticket.status === 'completed'
-                                ? 'bg-emerald-50 text-emerald-700'
+                                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
                                 : ticket.status === 'skipped'
-                                ? 'bg-amber-50 text-amber-800'
-                                : 'bg-slate-100 text-slate-600'
+                                ? 'bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-400'
+                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
                             }`}
                           >
                             {ticket.status}
@@ -611,7 +625,7 @@ export function StaffDashboardPage() {
                                   staffRequeueTicket(ticket.id)
                                 )
                               }
-                              className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-maroon-800 hover:bg-maroon-50"
+                              className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-maroon-800 transition hover:bg-maroon-50 dark:border-slate-700 dark:text-maroon-300 dark:hover:bg-maroon-950/50"
                             >
                               Re-queue
                             </button>

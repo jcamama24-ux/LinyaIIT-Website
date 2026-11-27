@@ -35,6 +35,7 @@ export function StudentPage() {
 
   const [sessionToken] = useState<string>(() => getStudentSessionToken());
   const [trackedTicketId, setTrackedTicketId] = useState<string | null>(() => getTrackedTicketId());
+  const [optimisticTicket, setOptimisticTicket] = useState<Ticket | null>(null);
   const [restoringTicket, setRestoringTicket] = useState<boolean>(true);
 
   const [selectedSpId, setSelectedSpId] = useState<string | null>(null);
@@ -50,6 +51,7 @@ export function StudentPage() {
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [callFlashKey, setCallFlashKey] = useState<number>(0);
 
+  const joiningRef = useRef<boolean>(false);
   const prevTicketIdRef = useRef<string | null>(null);
   const prevStatusRef = useRef<TicketStatus | null>(null);
   const prevCalledTsRef = useRef<string | null>(null);
@@ -61,6 +63,7 @@ export function StudentPage() {
       .then((found) => {
         if (!active) return;
         if (found) {
+          setOptimisticTicket(found);
           setTrackedTicketId(found.id);
           saveTrackedTicketId(found.id);
         }
@@ -77,20 +80,35 @@ export function StudentPage() {
     };
   }, [sessionToken]);
 
+  // Drop optimistic copy once the live tickets stream includes the same ticket
+  useEffect(() => {
+    if (optimisticTicket && tickets.some((t) => t.id === optimisticTicket.id)) {
+      setOptimisticTicket(null);
+    }
+  }, [tickets, optimisticTicket]);
+
   // Clear stale mirrored localStorage ticket IDs from prior days once today's queue loads
   useEffect(() => {
-    if (loading || restoringTicket || !trackedTicketId) return;
+    if (loading || restoringTicket || joining || !trackedTicketId) return;
+    // Never wipe a ticket we just joined/restored while waiting for refresh/realtime to catch up
+    if (optimisticTicket?.id === trackedTicketId) return;
+
     const existsToday = tickets.some((t) => t.id === trackedTicketId);
     if (!existsToday) {
       setTrackedTicketId(null);
       saveTrackedTicketId(null);
     }
-  }, [loading, restoringTicket, tickets, trackedTicketId]);
+  }, [loading, restoringTicket, joining, tickets, trackedTicketId, optimisticTicket]);
 
   const myTicket: Ticket | null = useMemo(() => {
     if (!trackedTicketId) return null;
-    return tickets.find((t) => t.id === trackedTicketId) ?? null;
-  }, [tickets, trackedTicketId]);
+    const liveTicket = tickets.find((t) => t.id === trackedTicketId);
+    if (liveTicket) return liveTicket;
+    if (optimisticTicket && optimisticTicket.id === trackedTicketId) {
+      return optimisticTicket;
+    }
+    return null;
+  }, [tickets, trackedTicketId, optimisticTicket]);
 
   const myServicePoint: ServicePoint | null = useMemo(() => {
     if (!myTicket) return null;
@@ -165,7 +183,11 @@ export function StudentPage() {
   const myQueueMetrics = useMemo(() => {
     if (!myTicket) return null;
 
-    const spTickets = tickets.filter((t) => t.service_point_id === myTicket.service_point_id);
+    const rawSpTickets = tickets.filter((t) => t.service_point_id === myTicket.service_point_id);
+    const spTickets = rawSpTickets.some((t) => t.id === myTicket.id)
+      ? rawSpTickets
+      : [...rawSpTickets, myTicket];
+
     const currentServing = spTickets.find((t) => t.status === 'called') ?? null;
     const waitingTickets = spTickets
       .filter((t) => t.status === 'waiting')
@@ -199,14 +221,20 @@ export function StudentPage() {
     [servicePoints, selectedSpId]
   );
 
-  async function handleJoinQueue(e: React.FormEvent) {
+  async function handleJoinQueue(e: React.FormEvent, targetSp: ServicePoint | null = selectedSp) {
     e.preventDefault();
-    if (!selectedSp) return;
+    if (!targetSp || !targetSp.is_active || joiningRef.current) return;
 
-    unlockAudioOnGesture();
+    joiningRef.current = true;
     setJoining(true);
     setActionError(null);
     setNotice(null);
+
+    try {
+      unlockAudioOnGesture();
+    } catch {
+      // Non-fatal: audio unlocking may be restricted in some browsers
+    }
 
     const trimmedPurpose = purpose.trim();
     const encodedPurpose = requestPriorityLane
@@ -217,12 +245,13 @@ export function StudentPage() {
 
     try {
       const result = await joinQueue({
-        servicePointId: selectedSp.id,
+        servicePointId: targetSp.id,
         sessionToken,
         studentName,
         purpose: encodedPurpose,
       });
 
+      setOptimisticTicket(result.ticket);
       setTrackedTicketId(result.ticket.id);
       saveTrackedTicketId(result.ticket.id);
       prevTicketIdRef.current = result.ticket.id;
@@ -239,10 +268,16 @@ export function StudentPage() {
       setPurpose('');
       setRequestPriorityLane(false);
       setSelectedSpId(null);
-      await refresh();
+
+      try {
+        await refresh();
+      } catch {
+        // Realtime subscription or next refresh will sync; ticket is already issued
+      }
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Unable to join the queue.');
     } finally {
+      joiningRef.current = false;
       setJoining(false);
     }
   }
@@ -254,6 +289,7 @@ export function StudentPage() {
 
     try {
       await leaveQueue(myTicket.id, sessionToken);
+      setOptimisticTicket(null);
       setConfirmLeaveOpen(false);
       await refresh();
     } catch (err) {
@@ -264,6 +300,7 @@ export function StudentPage() {
   }
 
   function handleDismissFinishedTicket() {
+    setOptimisticTicket(null);
     setTrackedTicketId(null);
     saveTrackedTicketId(null);
     setNotice(null);
@@ -388,7 +425,7 @@ export function StudentPage() {
                     >
                       <button
                         type="button"
-                        disabled={!sp.is_active}
+                        disabled={!sp.is_active || joining}
                         onClick={() => {
                           unlockAudioOnGesture();
                           setActionError(null);
@@ -468,7 +505,7 @@ export function StudentPage() {
                       {/* Inline Join Form when selected */}
                       {isSelected && sp.is_active && (
                         <form
-                          onSubmit={handleJoinQueue}
+                          onSubmit={(e) => void handleJoinQueue(e, sp)}
                           className="space-y-3 rounded-b-2xl border-t border-slate-100 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/60 sm:p-5"
                         >
                           <div className="grid gap-3 sm:grid-cols-2">
@@ -484,10 +521,11 @@ export function StudentPage() {
                                 id="student-name"
                                 type="text"
                                 maxLength={60}
+                                disabled={joining}
                                 value={studentName}
                                 onChange={(e) => setStudentName(e.target.value)}
                                 placeholder="e.g., Juan D. / 2024-0123"
-                                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-maroon-800 focus:outline-none focus:ring-2 focus:ring-maroon-800/20 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-rose-400 dark:focus:ring-rose-400/25"
+                                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-maroon-800 focus:outline-none focus:ring-2 focus:ring-maroon-800/20 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-rose-400 dark:focus:ring-rose-400/25"
                               />
                             </div>
                             <div>
@@ -502,10 +540,11 @@ export function StudentPage() {
                                 id="student-purpose"
                                 type="text"
                                 maxLength={105}
+                                disabled={joining}
                                 value={purpose}
                                 onChange={(e) => setPurpose(e.target.value)}
                                 placeholder="e.g., Request TOR, Clearance"
-                                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-maroon-800 focus:outline-none focus:ring-2 focus:ring-maroon-800/20 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-rose-400 dark:focus:ring-rose-400/25"
+                                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-maroon-800 focus:outline-none focus:ring-2 focus:ring-maroon-800/20 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-rose-400 dark:focus:ring-rose-400/25"
                               />
                             </div>
                           </div>
@@ -518,16 +557,17 @@ export function StudentPage() {
                             </span>
                             <input
                               type="checkbox"
+                              disabled={joining}
                               checked={requestPriorityLane}
                               onChange={(e) => setRequestPriorityLane(e.target.checked)}
-                              className="h-4 w-4 rounded border-slate-300 text-maroon-800 focus:ring-maroon-800 dark:border-slate-600 dark:bg-slate-800 dark:text-rose-500 dark:focus:ring-rose-400"
+                              className="h-4 w-4 rounded border-slate-300 text-maroon-800 focus:ring-maroon-800 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-rose-500 dark:focus:ring-rose-400"
                             />
                           </label>
 
                           <button
                             type="submit"
-                            disabled={joining}
-                            className="flex w-full items-center justify-center gap-2 rounded-xl bg-maroon-800 px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-maroon-900 disabled:opacity-60 dark:bg-rose-500 dark:text-slate-950 dark:hover:bg-rose-400"
+                            disabled={joining || !sp.is_active}
+                            className="flex w-full items-center justify-center gap-2 rounded-xl bg-maroon-800 px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-maroon-900 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-rose-500 dark:text-slate-950 dark:hover:bg-rose-400"
                           >
                             {joining ? (
                               <>

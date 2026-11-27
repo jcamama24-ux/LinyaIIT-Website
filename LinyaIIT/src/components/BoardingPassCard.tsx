@@ -8,7 +8,6 @@ import {
   MapPin,
   Megaphone,
   QrCode,
-  Sparkles,
   Volume2,
   VolumeX,
   DoorOpen,
@@ -18,7 +17,6 @@ import { useTheme } from '../lib/theme';
 import {
   formatMinutesLabel,
   getDisplayPurpose,
-  isPriorityTicket,
   resolveAssignedWindow,
   type StudentWaitEstimate,
 } from '../lib/waitTime';
@@ -55,7 +53,6 @@ export function BoardingPassCard({
   const qrWrapperRef = useRef<HTMLDivElement | null>(null);
   const [downloading, setDownloading] = useState(false);
 
-  const priority = isPriorityTicket(ticket);
   const displayPurpose = getDisplayPurpose(ticket.purpose);
   const assignedWindow = resolveAssignedWindow(ticket, servicePoint);
   const qrPayload = `LINYAIIT:${ticket.id}:${ticket.ticket_number}`;
@@ -93,7 +90,7 @@ export function BoardingPassCard({
           : 'border-slate-200 dark:border-slate-800'
       }`}
     >
-      {/* ================= TOP BOARDING PASS HEADER ================= */}
+      {/* ================= TOP QUEUE PASS HEADER ================= */}
       {ticket.status === 'called' && (
         <div className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 px-5 py-4 text-white sm:px-6">
           <div className="flex items-center justify-between gap-3">
@@ -132,7 +129,7 @@ export function BoardingPassCard({
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-widest text-gold-300 dark:text-gold-400">
-                MSU-IIT • LinyaIIT Boarding Pass
+                MSU-IIT • LinyaIIT Queue Pass
               </p>
               <p className="mt-0.5 text-base font-extrabold text-white">
                 {position === 1
@@ -193,33 +190,22 @@ export function BoardingPassCard({
 
       {/* ================= UPPER PASS BODY ================= */}
       <div className="px-5 pb-6 pt-5 sm:px-6">
-        {/* Lane Badge & Counter Code Row */}
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-extrabold uppercase tracking-wide ${
-              priority
-                ? 'bg-gold-100 text-gold-900 ring-1 ring-gold-300 dark:bg-gold-400 dark:text-slate-950 dark:ring-gold-300'
-                : 'bg-maroon-50 text-maroon-800 ring-1 ring-maroon-200 dark:bg-rose-500/20 dark:text-rose-300 dark:ring-rose-400/40'
-            }`}
-          >
-            {priority && <Sparkles className="h-3.5 w-3.5" />}
-            {priority ? 'Priority Lane' : 'Regular Lane'}
-          </span>
-
-          <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
-            {servicePoint && (
-              <span className="rounded-lg bg-slate-100 px-2.5 py-1 font-mono font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                COUNTER {servicePoint.code}
-              </span>
-            )}
-            <span>Issued {issuedTime}</span>
-          </div>
+        {/* Counter Code & Issue Time Row */}
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+          {servicePoint ? (
+            <span className="rounded-lg bg-slate-100 px-2.5 py-1 font-mono font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+              COUNTER {servicePoint.code}
+            </span>
+          ) : (
+            <span />
+          )}
+          <span>Issued {issuedTime}</span>
         </div>
 
         {/* Hero Ticket Number */}
         <div className="mt-5 text-center">
           <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-400">
-            Boarding Ticket Number
+            Ticket Number
           </p>
           <div
             className={`mt-1 font-mono text-6xl font-extrabold tracking-tight sm:text-7xl ${
@@ -244,7 +230,7 @@ export function BoardingPassCard({
             </div>
           )}
 
-          {/* Service Point Details */}
+          {/* Office Details */}
           {servicePoint && (
             <div className="mt-4 flex flex-col items-center rounded-2xl border border-slate-200/80 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-800/60">
               <span className="text-sm font-bold text-slate-900 dark:text-white">
@@ -325,7 +311,7 @@ export function BoardingPassCard({
         )}
       </div>
 
-      {/* ================= PERFORATED BOARDING PASS DIVIDER ================= */}
+      {/* ================= PERFORATED PASS DIVIDER ================= */}
       <div className="relative flex items-center" aria-hidden="true">
         <div className="-ml-4 h-8 w-8 shrink-0 rounded-full border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950" />
         <div className="w-full border-t-2 border-dashed border-slate-300 dark:border-slate-700" />
@@ -376,7 +362,7 @@ export function BoardingPassCard({
               className="mt-3.5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-maroon-800 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-maroon-900 disabled:opacity-60 dark:bg-rose-500 dark:text-slate-950 dark:hover:bg-rose-400 sm:w-auto"
             >
               <Download className="h-4 w-4" />
-              {downloading ? 'Preparing PNG...' : 'Download Boarding Pass (PNG)'}
+              {downloading ? 'Preparing PNG...' : 'Download Queue Pass (PNG)'}
             </button>
           </div>
         </div>
