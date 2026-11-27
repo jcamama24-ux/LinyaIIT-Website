@@ -1,9 +1,14 @@
 import { useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import { ArrowLeft, MapPin, Megaphone, Users } from 'lucide-react';
+import { ArrowLeft, Clock, MapPin, Megaphone, Users } from 'lucide-react';
 import { useRealtimeQueue } from '../hooks/useRealtimeQueue';
 import { ConnectionBadge } from '../components/ConnectionBadge';
+import {
+  calculateStudentWaitEstimate,
+  computeRollingAverageMinutes,
+  formatMinutesLabel,
+} from '../lib/waitTime';
 
 export function DisplayBoardPage() {
   const { servicePoints, tickets, realtimeStatus, refresh } = useRealtimeQueue();
@@ -23,16 +28,15 @@ export function DisplayBoardPage() {
       <header className="border-b border-slate-800 bg-slate-900/90 px-6 py-4">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-maroon-700 text-xl font-extrabold">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-500 text-xl font-extrabold text-slate-950">
               L
             </div>
             <div>
               <h1 className="text-xl font-extrabold tracking-tight">
-                Linya<span className="text-gold-400">IIT</span> Live Queue Board
+                Linya<span className="text-rose-400">IIT</span>{' '}
+                <span className="text-gold-400">Live Queue Board</span>
               </h1>
-              <p className="text-xs text-slate-400">
-                Real-time Campus Service Monitor
-              </p>
+              <p className="text-xs text-slate-400">Real-time Campus Service Monitor</p>
             </div>
           </div>
 
@@ -57,6 +61,12 @@ export function DisplayBoardPage() {
               .sort((a, b) => a.sequence_number - b.sequence_number);
             const called = spTickets.find((t) => t.status === 'called') ?? null;
             const waiting = spTickets.filter((t) => t.status === 'waiting');
+            const rolling = computeRollingAverageMinutes(tickets, sp.id);
+            const estimate = calculateStudentWaitEstimate(
+              waiting.length,
+              Boolean(called),
+              rolling
+            );
 
             return (
               <div
@@ -65,13 +75,19 @@ export function DisplayBoardPage() {
               >
                 <div>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="rounded-lg bg-maroon-800 px-2.5 py-1 font-mono text-xs font-extrabold text-white">
+                    <span className="rounded-lg bg-rose-500 px-2.5 py-1 font-mono text-xs font-extrabold text-slate-950">
                       COUNTER {sp.code}
                     </span>
-                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-400">
-                      <Users className="h-3.5 w-3.5" />
-                      {waiting.length} waiting
-                    </span>
+                    <div className="flex items-center gap-3 text-xs font-semibold text-slate-400">
+                      <span className="inline-flex items-center gap-1">
+                        <Clock className="h-3.5 w-3.5 text-gold-400" />
+                        {formatMinutesLabel(estimate.estimatedMinutes)}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Users className="h-3.5 w-3.5 text-rose-400" />
+                        {waiting.length} waiting
+                      </span>
+                    </div>
                   </div>
 
                   <h2 className="mt-3 text-lg font-bold text-white">{sp.name}</h2>
@@ -98,10 +114,7 @@ export function DisplayBoardPage() {
                       <span className="text-slate-600">None</span>
                     ) : (
                       waiting.slice(0, 4).map((t) => (
-                        <span
-                          key={t.id}
-                          className="rounded-md bg-slate-800 px-2 py-0.5"
-                        >
+                        <span key={t.id} className="rounded-md bg-slate-800 px-2 py-0.5">
                           {t.ticket_number}
                         </span>
                       ))
@@ -113,26 +126,21 @@ export function DisplayBoardPage() {
           })}
         </div>
 
-        {/* Right Column: Scan QR to Join */}
         <aside className="lg:col-span-3">
-          <div className="sticky top-6 rounded-3xl border border-slate-800 bg-gradient-to-b from-maroon-900 to-slate-900 p-6 text-center shadow-xl">
-            <p className="text-xs font-bold uppercase tracking-widest text-gold-300">
+          <div className="sticky top-6 rounded-3xl border border-rose-500/30 bg-slate-900 p-6 text-center shadow-xl">
+            <p className="text-xs font-bold uppercase tracking-widest text-gold-400">
               Skip the Line
             </p>
-            <h2 className="mt-1 text-xl font-extrabold text-white">
-              Scan to Join Queue
-            </h2>
+            <h2 className="mt-1 text-xl font-extrabold text-white">Scan to Join Queue</h2>
             <p className="mt-2 text-xs leading-relaxed text-slate-300">
-              Point your phone camera at the QR code to get a live digital ticket.
+              Point your phone camera at the QR code to get a live digital boarding pass.
             </p>
 
             <div className="mx-auto mt-5 inline-block rounded-2xl bg-white p-4 shadow-lg">
               <QRCodeSVG value={studentUrl} size={176} level="M" />
             </div>
 
-            <p className="mt-4 break-all font-mono text-[11px] text-slate-400">
-              {studentUrl}
-            </p>
+            <p className="mt-4 break-all font-mono text-[11px] text-slate-400">{studentUrl}</p>
           </div>
         </aside>
       </main>

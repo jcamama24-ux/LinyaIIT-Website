@@ -1,12 +1,11 @@
 /**
  * Anonymous device identity token for students.
  *
- * IMPORTANT: This is NOT a queue database. Queue state lives 100% in Supabase
- * PostgreSQL. This random token is hashed with SHA-256 on the database server
- * solely to:
- *  1) Prevent the same device/browser from grabbing duplicate active tickets.
- *  2) Restore the student's live ticket if they refresh or reopen their browser.
- *  3) Verify ownership when a student clicks "Leave Queue".
+ * Queue state lives 100% in Supabase PostgreSQL. This random token is hashed
+ * with SHA-256 on the database server to prevent duplicate active tickets,
+ * restore live tickets across reloads, and authorize Leave Queue requests.
+ * The active ticket.id is mirrored in localStorage strictly for instant UI
+ * hydration before getMyActiveTicket() resolves.
  */
 
 const TOKEN_STORAGE_KEY = 'linyaiit_device_identity_v1';
@@ -16,7 +15,6 @@ function generateRandomToken(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
-  // Safe fallback for older mobile browsers without crypto.randomUUID
   const bytes = new Uint8Array(16);
   if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
     crypto.getRandomValues(bytes);
@@ -38,7 +36,6 @@ export function getStudentSessionToken(): string {
     window.localStorage.setItem(TOKEN_STORAGE_KEY, fresh);
     return fresh;
   } catch {
-    // Private browsing / restricted storage fallback (in-memory for current tab)
     return generateRandomToken();
   }
 }
@@ -46,8 +43,10 @@ export function getStudentSessionToken(): string {
 export function saveTrackedTicketId(ticketId: string | null): void {
   try {
     if (ticketId) {
+      window.localStorage.setItem(LAST_TICKET_KEY, ticketId);
       window.sessionStorage.setItem(LAST_TICKET_KEY, ticketId);
     } else {
+      window.localStorage.removeItem(LAST_TICKET_KEY);
       window.sessionStorage.removeItem(LAST_TICKET_KEY);
     }
   } catch {
@@ -57,6 +56,8 @@ export function saveTrackedTicketId(ticketId: string | null): void {
 
 export function getTrackedTicketId(): string | null {
   try {
+    const fromLocal = window.localStorage.getItem(LAST_TICKET_KEY);
+    if (fromLocal) return fromLocal;
     return window.sessionStorage.getItem(LAST_TICKET_KEY);
   } catch {
     return null;

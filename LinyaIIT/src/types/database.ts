@@ -26,6 +26,11 @@ export interface Ticket {
   called_at: string | null;
   completed_at: string | null;
   handled_by: string | null;
+  // Optional forward-compatible fields (derived gracefully if absent from DB)
+  last_called_at?: string | null;
+  window_number?: string | number | null;
+  is_priority?: boolean | null;
+  lane?: 'priority' | 'regular' | null;
 }
 
 export interface StaffProfile {

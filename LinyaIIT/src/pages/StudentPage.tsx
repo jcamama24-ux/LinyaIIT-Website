@@ -1,21 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertCircle,
   ArrowRight,
   Building2,
-  CheckCircle2,
   Clock,
   Loader2,
   MapPin,
-  Megaphone,
   Sparkles,
   Ticket as TicketIcon,
   Users,
-  Volume2,
-  VolumeX,
-  AlertCircle,
 } from 'lucide-react';
 import { Navbar } from '../components/Navbar';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { BoardingPassCard } from '../components/BoardingPassCard';
 import { useRealtimeQueue } from '../hooks/useRealtimeQueue';
 import { getMyActiveTicket, joinQueue, leaveQueue } from '../lib/queueApi';
 import {
@@ -24,7 +21,14 @@ import {
   saveTrackedTicketId,
 } from '../lib/session';
 import { playCalledAlert, unlockAudioOnGesture } from '../lib/sound';
-import type { ServicePoint, Ticket } from '../types/database';
+import {
+  PRIORITY_TAG,
+  calculateStudentWaitEstimate,
+  computeRollingAverageMinutes,
+  formatMinutesLabel,
+  type RollingWaitStats,
+} from '../lib/waitTime';
+import type { ServicePoint, Ticket, TicketStatus } from '../types/database';
 
 export function StudentPage() {
   const { servicePoints, tickets, loading, error, realtimeStatus, refresh } = useRealtimeQueue();
@@ -36,16 +40,21 @@ export function StudentPage() {
   const [selectedSpId, setSelectedSpId] = useState<string | null>(null);
   const [studentName, setStudentName] = useState<string>('');
   const [purpose, setPurpose] = useState<string>('');
+  const [requestPriorityLane, setRequestPriorityLane] = useState<boolean>(false);
+
   const [joining, setJoining] = useState<boolean>(false);
   const [leaving, setLeaving] = useState<boolean>(false);
   const [confirmLeaveOpen, setConfirmLeaveOpen] = useState<boolean>(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [callFlashKey, setCallFlashKey] = useState<number>(0);
 
-  const prevStatusRef = useRef<string | null>(null);
+  const prevTicketIdRef = useRef<string | null>(null);
+  const prevStatusRef = useRef<TicketStatus | null>(null);
+  const prevCalledTsRef = useRef<string | null>(null);
 
-  // Restore student's active ticket from Supabase PostgreSQL on mount
+  // Restore student's active ticket from PostgreSQL while keeping localStorage hydration instant
   useEffect(() => {
     let active = true;
     getMyActiveTicket(sessionToken)
@@ -68,7 +77,16 @@ export function StudentPage() {
     };
   }, [sessionToken]);
 
-  // Locate the student's live ticket inside the Realtime tickets stream
+  // Clear stale mirrored localStorage ticket IDs from prior days once today's queue loads
+  useEffect(() => {
+    if (loading || restoringTicket || !trackedTicketId) return;
+    const existsToday = tickets.some((t) => t.id === trackedTicketId);
+    if (!existsToday) {
+      setTrackedTicketId(null);
+      saveTrackedTicketId(null);
+    }
+  }, [loading, restoringTicket, tickets, trackedTicketId]);
+
   const myTicket: Ticket | null = useMemo(() => {
     if (!trackedTicketId) return null;
     return tickets.find((t) => t.id === trackedTicketId) ?? null;
@@ -79,28 +97,55 @@ export function StudentPage() {
     return servicePoints.find((sp) => sp.id === myTicket.service_point_id) ?? null;
   }, [myTicket, servicePoints]);
 
-  // Trigger audio chime + phone vibration when status transitions to "called"
+  // Trigger audio chime + vibration + animated highlight on waiting -> called OR last_called_at bump
   useEffect(() => {
     if (!myTicket) {
+      prevTicketIdRef.current = null;
       prevStatusRef.current = null;
+      prevCalledTsRef.current = null;
       return;
     }
 
-    if (prevStatusRef.current && prevStatusRef.current !== 'called' && myTicket.status === 'called') {
-      playCalledAlert(soundEnabled);
+    const currentCallTs = myTicket.last_called_at ?? myTicket.called_at ?? null;
+    const isSameTicket = prevTicketIdRef.current === myTicket.id;
+
+    if (isSameTicket) {
+      const transitionedFromWaitingToCalled =
+        prevStatusRef.current === 'waiting' && myTicket.status === 'called';
+      const callTimestampBumped =
+        myTicket.status === 'called' &&
+        currentCallTs !== null &&
+        prevCalledTsRef.current !== null &&
+        currentCallTs !== prevCalledTsRef.current;
+
+      if (transitionedFromWaitingToCalled || callTimestampBumped) {
+        playCalledAlert(soundEnabled);
+        setCallFlashKey((k) => k + 1);
+      }
     }
+
+    prevTicketIdRef.current = myTicket.id;
     prevStatusRef.current = myTicket.status;
+    prevCalledTsRef.current = currentCallTs;
   }, [myTicket, soundEnabled]);
 
-  // Compute live queue statistics per service point
+  // Compute live queue counts and rolling-average wait stats per service point
   const spStatsMap = useMemo(() => {
     const map = new Map<
       string,
-      { waitingCount: number; currentServing: Ticket | null }
+      {
+        waitingCount: number;
+        currentServing: Ticket | null;
+        rolling: RollingWaitStats;
+      }
     >();
 
     for (const sp of servicePoints) {
-      map.set(sp.id, { waitingCount: 0, currentServing: null });
+      map.set(sp.id, {
+        waitingCount: 0,
+        currentServing: null,
+        rolling: computeRollingAverageMinutes(tickets, sp.id),
+      });
     }
 
     for (const t of tickets) {
@@ -116,7 +161,7 @@ export function StudentPage() {
     return map;
   }, [servicePoints, tickets]);
 
-  // Compute student's exact live queue position and current serving ticket
+  // Compute live queue position and rolling wait estimate for active student ticket
   const myQueueMetrics = useMemo(() => {
     if (!myTicket) return null;
 
@@ -129,18 +174,25 @@ export function StudentPage() {
     const positionIndex = waitingTickets.findIndex((t) => t.id === myTicket.id);
     const position = positionIndex >= 0 ? positionIndex + 1 : 0;
     const aheadCount = positionIndex >= 0 ? positionIndex : 0;
-    const estMinutes =
-      aheadCount * (myServicePoint?.avg_service_minutes ?? 5) +
-      (currentServing ? Math.ceil((myServicePoint?.avg_service_minutes ?? 5) / 2) : 0);
+
+    const rolling =
+      spStatsMap.get(myTicket.service_point_id)?.rolling ??
+      computeRollingAverageMinutes(tickets, myTicket.service_point_id);
+
+    const waitEstimate = calculateStudentWaitEstimate(
+      aheadCount,
+      Boolean(currentServing && currentServing.id !== myTicket.id),
+      rolling
+    );
 
     return {
       currentServing,
       position,
       aheadCount,
       totalWaiting: waitingTickets.length,
-      estMinutes,
+      waitEstimate,
     };
-  }, [myTicket, myServicePoint, tickets]);
+  }, [myTicket, spStatsMap, tickets]);
 
   const selectedSp = useMemo(
     () => servicePoints.find((sp) => sp.id === selectedSpId) ?? null,
@@ -156,17 +208,26 @@ export function StudentPage() {
     setActionError(null);
     setNotice(null);
 
+    const trimmedPurpose = purpose.trim();
+    const encodedPurpose = requestPriorityLane
+      ? trimmedPurpose
+        ? `${PRIORITY_TAG} ${trimmedPurpose}`
+        : PRIORITY_TAG
+      : trimmedPurpose;
+
     try {
       const result = await joinQueue({
         servicePointId: selectedSp.id,
         sessionToken,
         studentName,
-        purpose,
+        purpose: encodedPurpose,
       });
 
       setTrackedTicketId(result.ticket.id);
       saveTrackedTicketId(result.ticket.id);
+      prevTicketIdRef.current = result.ticket.id;
       prevStatusRef.current = result.ticket.status;
+      prevCalledTsRef.current = result.ticket.last_called_at ?? result.ticket.called_at ?? null;
 
       if (result.already_active) {
         setNotice(
@@ -176,6 +237,7 @@ export function StudentPage() {
 
       setStudentName('');
       setPurpose('');
+      setRequestPriorityLane(false);
       setSelectedSpId(null);
       await refresh();
     } catch (err) {
@@ -208,261 +270,93 @@ export function StudentPage() {
     setActionError(null);
   }
 
-  const isLoadingScreen = loading || restoringTicket;
+  // Instant hydration: render active ticket immediately if mirrored ID already matched today's stream
+  const isLoadingScreen = (loading && !myTicket) || (!trackedTicketId && restoringTicket);
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-14">
+    <div className="min-h-screen bg-slate-50 pb-14 transition-colors dark:bg-slate-950">
       <Navbar realtimeStatus={realtimeStatus} onRefresh={refresh} />
 
       <main className="mx-auto max-w-2xl px-4 pt-6 sm:px-6 sm:pt-8">
         {error && (
-          <div className="mb-5 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
-            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
+          <div className="mb-5 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-500/40 dark:bg-rose-950/50 dark:text-rose-200">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400" />
             <div>
               <p className="font-semibold">Connection Error</p>
-              <p className="mt-0.5 text-rose-700">{error}</p>
+              <p className="mt-0.5 text-rose-700 dark:text-rose-300">{error}</p>
             </div>
           </div>
         )}
 
         {actionError && (
-          <div className="mb-5 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
-            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
+          <div className="mb-5 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-500/40 dark:bg-rose-950/50 dark:text-rose-200">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400" />
             <p className="font-medium">{actionError}</p>
           </div>
         )}
 
         {notice && (
-          <div className="mb-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+          <div className="mb-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-gold-400/40 dark:bg-amber-950/40 dark:text-amber-100">
+            <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-gold-400" />
             <p className="font-medium">{notice}</p>
           </div>
         )}
 
         {isLoadingScreen ? (
-          <div className="flex flex-col items-center justify-center rounded-3xl border border-slate-200 bg-white py-20 shadow-sm">
-            <Loader2 className="h-8 w-8 animate-spin text-maroon-800" />
-            <p className="mt-3 text-sm font-medium text-slate-600">
+          <div className="flex flex-col items-center justify-center rounded-3xl border border-slate-200 bg-white py-20 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <Loader2 className="h-8 w-8 animate-spin text-maroon-800 dark:text-rose-400" />
+            <p className="mt-3 text-sm font-medium text-slate-600 dark:text-slate-300">
               Connecting to live campus queues...
             </p>
           </div>
         ) : myTicket && myQueueMetrics ? (
-          /* ================= ACTIVE / RECENT TICKET VIEW ================= */
+          /* ================= ACTIVE / RECENT BOARDING-PASS VIEW ================= */
           <section className="space-y-4">
-            <div
-              className={`overflow-hidden rounded-3xl border bg-white shadow-lg transition ${
-                myTicket.status === 'called'
-                  ? 'border-emerald-400 animate-called-glow'
-                  : 'border-slate-200'
-              }`}
-            >
-              {/* Status Banner */}
-              {myTicket.status === 'called' && (
-                <div className="bg-emerald-600 px-6 py-4 text-white">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <Megaphone className="h-6 w-6 animate-bounce" />
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-wider text-emerald-100">
-                          Now Calling Your Number
-                        </p>
-                        <p className="text-lg font-extrabold">
-                          It&apos;s your turn! Proceed to the counter.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+            <BoardingPassCard
+              ticket={myTicket}
+              servicePoint={myServicePoint}
+              currentServing={myQueueMetrics.currentServing}
+              position={myQueueMetrics.position}
+              aheadCount={myQueueMetrics.aheadCount}
+              waitEstimate={myQueueMetrics.waitEstimate}
+              soundEnabled={soundEnabled}
+              callFlashKey={callFlashKey}
+              onToggleSound={() => {
+                unlockAudioOnGesture();
+                setSoundEnabled((prev) => !prev);
+              }}
+              onRequestLeave={() => setConfirmLeaveOpen(true)}
+              onDismissFinished={handleDismissFinishedTicket}
+            />
 
-              {myTicket.status === 'waiting' && (
-                <div className="bg-gradient-to-r from-maroon-900 to-maroon-800 px-6 py-4 text-white">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wider text-gold-200">
-                        Live Queue Pass
-                      </p>
-                      <p className="text-base font-bold">
-                        {myQueueMetrics.position === 1
-                          ? 'You are NEXT in line!'
-                          : 'Please stay nearby — updates live'}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        unlockAudioOnGesture();
-                        setSoundEnabled((prev) => !prev);
-                      }}
-                      title={soundEnabled ? 'Mute call alert sound' : 'Unmute call alert sound'}
-                      className="rounded-xl bg-white/10 p-2 text-white transition hover:bg-white/20"
-                    >
-                      {soundEnabled ? (
-                        <Volume2 className="h-5 w-5" />
-                      ) : (
-                        <VolumeX className="h-5 w-5 text-maroon-200" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {myTicket.status === 'completed' && (
-                <div className="bg-emerald-50 px-6 py-5 text-emerald-900 border-b border-emerald-100">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="h-7 w-7 text-emerald-600" />
-                    <div>
-                      <p className="text-base font-extrabold">Service Completed</p>
-                      <p className="text-sm text-emerald-700">
-                        Thank you for using LinyaIIT!
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {myTicket.status === 'skipped' && (
-                <div className="bg-amber-50 px-6 py-5 text-amber-950 border-b border-amber-200">
-                  <div className="flex items-center gap-3">
-                    <AlertCircle className="h-7 w-7 text-amber-600" />
-                    <div>
-                      <p className="text-base font-extrabold">Ticket Skipped</p>
-                      <p className="text-sm text-amber-800">
-                        You missed your call. Approach the staff counter or join a new queue below.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {myTicket.status === 'cancelled' && (
-                <div className="bg-slate-100 px-6 py-5 text-slate-900 border-b border-slate-200">
-                  <p className="text-base font-extrabold">You Left the Queue</p>
-                  <p className="text-sm text-slate-600">
-                    Ticket {myTicket.ticket_number} has been cancelled.
-                  </p>
-                </div>
-              )}
-
-              {/* Ticket Body */}
-              <div className="p-6 text-center">
-                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
-                  Your Ticket Number
-                </p>
-                <div
-                  className={`mt-1 font-mono text-6xl font-extrabold tracking-tight sm:text-7xl ${
-                    myTicket.status === 'called' ? 'text-emerald-600' : 'text-maroon-800'
-                  }`}
-                >
-                  {myTicket.ticket_number}
-                </div>
-
-                {myServicePoint && (
-                  <div className="mt-4 inline-flex flex-col items-center rounded-2xl bg-slate-50 px-4 py-2.5 text-center ring-1 ring-slate-200/80">
-                    <span className="text-sm font-bold text-slate-900">
-                      {myServicePoint.name}
-                    </span>
-                    <span className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
-                      <MapPin className="h-3.5 w-3.5 text-maroon-700" />
-                      {myServicePoint.location}
-                    </span>
-                  </div>
-                )}
-
-                {/* Live Metrics Grid */}
-                {(myTicket.status === 'waiting' || myTicket.status === 'called') && (
-                  <div className="mt-6 grid grid-cols-3 gap-2.5 text-left sm:gap-3">
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3.5 text-center">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Position
-                      </p>
-                      <p className="mt-1 font-mono text-2xl font-extrabold text-slate-900">
-                        {myTicket.status === 'called' ? 'NOW' : `#${myQueueMetrics.position}`}
-                      </p>
-                    </div>
-
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3.5 text-center">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Now Serving
-                      </p>
-                      <p className="mt-1 font-mono text-2xl font-extrabold text-maroon-800">
-                        {myQueueMetrics.currentServing?.ticket_number ?? '—'}
-                      </p>
-                    </div>
-
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3.5 text-center">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Est. Wait
-                      </p>
-                      <p className="mt-1 text-xl font-extrabold text-slate-900">
-                        {myTicket.status === 'called'
-                          ? '0 min'
-                          : myQueueMetrics.estMinutes === 0
-                          ? '< 2m'
-                          : `~${myQueueMetrics.estMinutes}m`}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {myTicket.status === 'waiting' && (
-                  <p className="mt-4 text-xs text-slate-500">
-                    {myQueueMetrics.aheadCount === 0
-                      ? 'No one is waiting ahead of you. Get ready!'
-                      : `${myQueueMetrics.aheadCount} ${
-                          myQueueMetrics.aheadCount === 1 ? 'student is' : 'students are'
-                        } ahead of you in line.`}
-                  </p>
-                )}
-
-                {/* Ticket Footer Actions */}
-                <div className="mt-6 border-t border-slate-100 pt-5">
-                  {myTicket.status === 'waiting' || myTicket.status === 'called' ? (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmLeaveOpen(true)}
-                      className="w-full rounded-xl border border-rose-200 bg-rose-50/60 px-4 py-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-100"
-                    >
-                      Leave Queue
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={handleDismissFinishedTicket}
-                      className="w-full rounded-xl bg-maroon-800 px-4 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-maroon-900"
-                    >
-                      Join Another Queue
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <p className="text-center text-xs text-slate-500">
-              No need to refresh — this screen updates automatically the moment staff calls your ticket.
+            <p className="text-center text-xs text-slate-500 dark:text-slate-400">
+              No need to refresh — this boarding pass updates live the moment staff calls your ticket.
             </p>
           </section>
         ) : (
           /* ================= SERVICE POINT PICKER VIEW ================= */
           <section className="space-y-6">
             <div>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-maroon-50 px-3 py-1 text-xs font-bold text-maroon-800 ring-1 ring-maroon-200/70">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-maroon-50 px-3 py-1 text-xs font-bold text-maroon-800 ring-1 ring-maroon-200/70 dark:bg-rose-500/15 dark:text-rose-400 dark:ring-rose-400/30">
                 <TicketIcon className="h-3.5 w-3.5" />
                 Zero-Wait Digital Queue
               </span>
-              <h1 className="mt-2.5 text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
+              <h1 className="mt-2.5 text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
                 Select a Campus Office
               </h1>
-              <p className="mt-1 text-sm text-slate-600">
-                Pick an open service counter below to claim your digital ticket and monitor the line live from your phone.
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                Pick an open service counter below to claim your MSU-IIT digital boarding pass and
+                monitor the line live from your phone.
               </p>
             </div>
 
             {servicePoints.length === 0 ? (
-              <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
-                <Building2 className="mx-auto h-10 w-10 text-slate-300" />
-                <p className="mt-3 font-semibold text-slate-800">No service points available</p>
-                <p className="mt-1 text-sm text-slate-500">
+              <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <Building2 className="mx-auto h-10 w-10 text-slate-300 dark:text-slate-600" />
+                <p className="mt-3 font-semibold text-slate-800 dark:text-slate-100">
+                  No service points available
+                </p>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                   Run the SQL migration in Supabase to create campus offices.
                 </p>
               </div>
@@ -472,19 +366,24 @@ export function StudentPage() {
                   const stats = spStatsMap.get(sp.id) ?? {
                     waitingCount: 0,
                     currentServing: null,
+                    rolling: computeRollingAverageMinutes(tickets, sp.id),
                   };
                   const isSelected = selectedSpId === sp.id;
-                  const estWait = stats.waitingCount * sp.avg_service_minutes;
+                  const joinEstimate = calculateStudentWaitEstimate(
+                    stats.waitingCount,
+                    Boolean(stats.currentServing),
+                    stats.rolling
+                  );
 
                   return (
                     <div
                       key={sp.id}
-                      className={`rounded-2xl border bg-white transition ${
+                      className={`rounded-2xl border bg-white transition dark:bg-slate-900 ${
                         !sp.is_active
-                          ? 'border-slate-200 opacity-65'
+                          ? 'border-slate-200 opacity-65 dark:border-slate-800'
                           : isSelected
-                          ? 'border-maroon-700 ring-2 ring-maroon-700/20 shadow-md'
-                          : 'border-slate-200 hover:border-maroon-300 hover:shadow-sm'
+                          ? 'border-maroon-800 shadow-md ring-2 ring-maroon-800/20 dark:border-rose-400 dark:ring-rose-400/25'
+                          : 'border-slate-200 hover:border-maroon-300 hover:shadow-sm dark:border-slate-800 dark:hover:border-rose-400/60'
                       }`}
                     >
                       <button
@@ -495,14 +394,14 @@ export function StudentPage() {
                           setActionError(null);
                           setSelectedSpId(isSelected ? null : sp.id);
                         }}
-                        className="w-full p-4 text-left sm:p-5 disabled:cursor-not-allowed"
+                        className="w-full p-4 text-left disabled:cursor-not-allowed sm:p-5"
                       >
                         <div className="flex items-start gap-3.5">
                           <div
                             className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl font-mono text-xl font-extrabold ${
                               sp.is_active
-                                ? 'bg-maroon-800 text-white'
-                                : 'bg-slate-200 text-slate-500'
+                                ? 'bg-maroon-800 text-white dark:bg-rose-500 dark:text-slate-950'
+                                : 'bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-500'
                             }`}
                           >
                             {sp.code}
@@ -510,43 +409,56 @@ export function StudentPage() {
 
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                              <h2 className="text-base font-bold text-slate-900">{sp.name}</h2>
+                              <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                                {sp.name}
+                              </h2>
                               <span
                                 className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
                                   sp.is_active
-                                    ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
-                                    : 'bg-slate-100 text-slate-600'
+                                    ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:ring-emerald-500/40'
+                                    : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
                                 }`}
                               >
                                 {sp.is_active ? 'Open' : 'Paused'}
                               </span>
                             </div>
 
-                            <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
-                              <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                            <p className="mt-1 flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+                              <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-gold-400" />
                               <span className="truncate">{sp.location}</span>
                             </p>
 
                             {sp.description && (
-                              <p className="mt-1.5 text-xs text-slate-600">{sp.description}</p>
+                              <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-300">
+                                {sp.description}
+                              </p>
                             )}
 
-                            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs font-semibold">
-                              <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 text-slate-700">
-                                <Users className="h-3.5 w-3.5 text-maroon-700" />
+                            <div className="mt-3 flex flex-wrap items-center gap-2.5 text-xs font-semibold">
+                              <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                                <Users className="h-3.5 w-3.5 text-maroon-800 dark:text-rose-400" />
                                 {stats.waitingCount} waiting
                               </span>
 
-                              <span className="inline-flex items-center gap-1 rounded-lg bg-maroon-50 px-2.5 py-1 text-maroon-800">
+                              <span className="inline-flex items-center gap-1 rounded-lg bg-maroon-50 px-2.5 py-1 text-maroon-800 dark:bg-rose-500/15 dark:text-rose-300">
                                 Serving:{' '}
                                 <span className="font-mono font-bold">
                                   {stats.currentServing?.ticket_number ?? '—'}
                                 </span>
                               </span>
 
-                              <span className="inline-flex items-center gap-1 text-slate-500">
-                                <Clock className="h-3.5 w-3.5" />
-                                {estWait === 0 ? 'No wait' : `~${estWait} min`}
+                              <span className="inline-flex items-center gap-1 text-slate-600 dark:text-slate-300">
+                                <Clock className="h-3.5 w-3.5 text-slate-400 dark:text-gold-400" />
+                                <span>{formatMinutesLabel(joinEstimate.estimatedMinutes)}</span>
+                                <span
+                                  className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                                    joinEstimate.isLiveCalculated
+                                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                      : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                                  }`}
+                                >
+                                  {joinEstimate.isLiveCalculated ? 'Live-calculated' : 'Estimated'}
+                                </span>
                               </span>
                             </div>
                           </div>
@@ -557,15 +469,16 @@ export function StudentPage() {
                       {isSelected && sp.is_active && (
                         <form
                           onSubmit={handleJoinQueue}
-                          className="border-t border-slate-100 bg-slate-50/70 p-4 sm:p-5 rounded-b-2xl space-y-3"
+                          className="space-y-3 rounded-b-2xl border-t border-slate-100 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/60 sm:p-5"
                         >
                           <div className="grid gap-3 sm:grid-cols-2">
                             <div>
                               <label
                                 htmlFor="student-name"
-                                className="block text-xs font-semibold text-slate-700"
+                                className="block text-xs font-semibold text-slate-700 dark:text-slate-200"
                               >
-                                Name or Student ID <span className="font-normal text-slate-400">(optional)</span>
+                                Name or Student ID{' '}
+                                <span className="font-normal text-slate-400">(optional)</span>
                               </label>
                               <input
                                 id="student-name"
@@ -574,37 +487,52 @@ export function StudentPage() {
                                 value={studentName}
                                 onChange={(e) => setStudentName(e.target.value)}
                                 placeholder="e.g., Juan D. / 2024-0123"
-                                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-maroon-700 focus:outline-none focus:ring-2 focus:ring-maroon-700/20"
+                                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-maroon-800 focus:outline-none focus:ring-2 focus:ring-maroon-800/20 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-rose-400 dark:focus:ring-rose-400/25"
                               />
                             </div>
                             <div>
                               <label
                                 htmlFor="student-purpose"
-                                className="block text-xs font-semibold text-slate-700"
+                                className="block text-xs font-semibold text-slate-700 dark:text-slate-200"
                               >
-                                Transaction <span className="font-normal text-slate-400">(optional)</span>
+                                Transaction{' '}
+                                <span className="font-normal text-slate-400">(optional)</span>
                               </label>
                               <input
                                 id="student-purpose"
                                 type="text"
-                                maxLength={120}
+                                maxLength={105}
                                 value={purpose}
                                 onChange={(e) => setPurpose(e.target.value)}
                                 placeholder="e.g., Request TOR, Clearance"
-                                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-maroon-700 focus:outline-none focus:ring-2 focus:ring-maroon-700/20"
+                                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-maroon-800 focus:outline-none focus:ring-2 focus:ring-maroon-800/20 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-rose-400 dark:focus:ring-rose-400/25"
                               />
                             </div>
                           </div>
 
+                          {/* Lane Selection (Regular / Priority) — preserves joinQueue RPC contract */}
+                          <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs dark:border-slate-800 dark:bg-slate-900">
+                            <span className="flex items-center gap-2 font-semibold text-slate-700 dark:text-slate-200">
+                              <Sparkles className="h-4 w-4 text-gold-600 dark:text-gold-400" />
+                              Priority Lane (PWD / Senior / Pregnant)
+                            </span>
+                            <input
+                              type="checkbox"
+                              checked={requestPriorityLane}
+                              onChange={(e) => setRequestPriorityLane(e.target.checked)}
+                              className="h-4 w-4 rounded border-slate-300 text-maroon-800 focus:ring-maroon-800 dark:border-slate-600 dark:bg-slate-800 dark:text-rose-500 dark:focus:ring-rose-400"
+                            />
+                          </label>
+
                           <button
                             type="submit"
                             disabled={joining}
-                            className="flex w-full items-center justify-center gap-2 rounded-xl bg-maroon-800 px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-maroon-900 disabled:opacity-60"
+                            className="flex w-full items-center justify-center gap-2 rounded-xl bg-maroon-800 px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-maroon-900 disabled:opacity-60 dark:bg-rose-500 dark:text-slate-950 dark:hover:bg-rose-400"
                           >
                             {joining ? (
                               <>
                                 <Loader2 className="h-4 w-4 animate-spin" />
-                                Issuing Ticket...
+                                Issuing Boarding Pass...
                               </>
                             ) : (
                               <>
